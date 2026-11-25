@@ -1,0 +1,62 @@
+workflows:
+  pocketai-ios-unsigned:
+    name: PocketAI iOS unsigned IPA
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      vars:
+        APP_SCHEME: LLMFarm_Release
+    scripts:
+      - name: Register Dutch strings and build the unsigned app
+        script: |
+          set -euo pipefail
+
+          # The project uses explicit resource references. Add the Dutch strings
+          # file to its app resources phase during CI without touching app source.
+          python3 <<'PY'
+          from pathlib import Path
+
+          project = Path("LLMFarm.xcodeproj/project.pbxproj")
+          text = project.read_text()
+          build_file_id = "A11CE0000000000000000001"
+          file_ref_id = "A11CE0000000000000000002"
+          resource_phase_id = "15F2107C2A191B190021F414"
+
+          if "nl.lproj/Localizable.strings" not in text:
+              build_file = (
+                  f'\t\t{build_file_id} /* Localizable.strings in Resources */ = '
+                  f'{{isa = PBXBuildFile; fileRef = {file_ref_id} /* Localizable.strings */; }};\n'
+              )
+              file_ref = (
+                  f'\t\t{file_ref_id} /* Localizable.strings */ = '
+                  '{isa = PBXFileReference; lastKnownFileType = text.plist.strings; '
+                  'path = LLMFarm/nl.lproj/Localizable.strings; sourceTree = SOURCE_ROOT; };\n'
+              )
+              text = text.replace("/* End PBXBuildFile section */", build_file + "/* End PBXBuildFile section */", 1)
+              text = text.replace("/* End PBXFileReference section */", file_ref + "/* End PBXFileReference section */", 1)
+              phase_start = text.index(f"{resource_phase_id} /* Resources */ = {{")
+              files_start = text.index("files = (", phase_start) + len("files = (")
+              text = text[:files_start] + f"\n\t\t\t\t{build_file_id} /* Localizable.strings in Resources */," + text[files_start:]
+              project.write_text(text)
+          PY
+
+          xcodebuild \
+            -project LLMFarm.xcodeproj \
+            -scheme "$APP_SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            PRODUCT_NAME=PocketAI \
+            INFOPLIST_KEY_CFBundleDisplayName=PocketAI \
+            build
+
+          APP_PATH="$(find build/DerivedData/Build/Products -maxdepth 3 -type d -name 'PocketAI.app' -print -quit)"
+          test -n "$APP_PATH" || { echo "PocketAI.app was not produced" >&2; exit 1; }
+          mkdir -p artifacts/Payload
+          cp -R "$APP_PATH" artifacts/Payload/
+          (cd artifacts && /usr/bin/zip -qry PocketAI-unsigned.ipa Payload)
+    artifacts:
+      - artifacts/PocketAI-unsigned.ipa
