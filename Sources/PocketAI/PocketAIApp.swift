@@ -1,11 +1,16 @@
 import SwiftUI
+import SwiftData
 
-/// Temporary buildable app shell; chat and model-management views follow after engine approval.
 @main
 struct PocketAIApp: App {
+    @State private var llmManager = LLMManager()
+
     var body: some Scene {
         WindowGroup {
-            EmptyView()
+            PocketAIRootView()
+                .environment(llmManager)
+                .tint(Color(red: 0.255, green: 0.412, blue: 0.882))
         }
+        .modelContainer(for: [ChatConversationRecord.self, ChatMessageRecord.self])
     }
 }
