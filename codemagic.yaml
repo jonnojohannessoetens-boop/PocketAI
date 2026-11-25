@@ -9,11 +9,16 @@ workflows:
       - name: Install XcodeGen
         script: |
           set -euo pipefail
+          brew update
           brew install xcodegen
-      - name: Generate the Xcode project
+          command -v xcodegen
+          xcodegen --version
+      - name: Generate project and app icon
         script: |
           set -euo pipefail
-          xcodegen generate --spec project.yml --project PocketAI.xcodeproj
+          swift Scripts/generate_app_icon.swift
+          xcodegen generate --spec project.yml
+          test -d PocketAI.xcodeproj
       - name: Resolve Swift packages
         script: |
           set -euo pipefail
@@ -40,8 +45,10 @@ workflows:
           /usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$APP_PATH/Info.plist"
           /usr/libexec/PlistBuddy -c 'Print :LSSupportsOpeningDocumentsInPlace' "$APP_PATH/Info.plist"
 
+          rm -rf artifacts/Payload
           mkdir -p artifacts/Payload
           ditto "$APP_PATH" artifacts/Payload/PocketAI.app
           (cd artifacts && /usr/bin/zip -qry PocketAI-unsigned.ipa Payload)
+          test -s artifacts/PocketAI-unsigned.ipa
     artifacts:
       - artifacts/PocketAI-unsigned.ipa
